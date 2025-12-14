@@ -1,0 +1,427 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clay Engine API Explorer</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Custom Scrollbar for IDE feel */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #1e1e1e;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #3e3e42;
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: #007fd4;
+        }
+
+        /* Syntax Highlighting Mock */
+        .code-keyword { color: #569cd6; }
+        .code-function { color: #dcdcaa; }
+        .code-string { color: #ce9178; }
+        .code-comment { color: #6a9955; }
+        .code-number { color: #b5cea8; }
+        .code-object { color: #4ec9b0; }
+
+        /* Chart Container Strict Styling */
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 250px;
+            max-height: 300px;
+        }
+    </style>
+    <!-- Chosen Palette: Dark IDE (VS Code inspired) - #1e1e1e (bg), #252526 (panel), #007fd4 (accent) -->
+    <!-- Application Structure Plan: 
+         1. Dashboard Layout: A 3-column layout mimicking a game engine editor to feel familiar to the target audience.
+         2. Sidebar (Left): Navigation of API Namespaces (Entity, Input, etc.) acting as the primary filter.
+         3. Main Content (Center): Dynamic documentation viewer. Displays details, charts, and descriptions based on selection.
+         4. Code Lab (Right): Interactive code snippets corresponding to the documentation, allowing users to see implementation immediately.
+         5. Why: This structure reduces cognitive load by separating navigation, explanation, and implementation, crucial for learning a new API. 
+    -->
+    <!-- Visualization & Content Choices:
+         1. API Composition Chart (Doughnut): Shows the distribution of methods across different systems (Input vs Engine vs Entity). Goal: Show API complexity balance.
+         2. Lifecycle Frequency (Bar): Visualizes how often functions run (Start vs Update). Goal: Explain the Game Loop concept visually.
+         3. No SVG/Mermaid: All icons are text/Unicode. All visuals are HTML/CSS or Canvas (Chart.js).
+    -->
+    <!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+</head>
+<body class="bg-[#1e1e1e] text-[#cccccc] font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- Header -->
+    <header class="bg-[#333333] border-b border-[#3e3e42] p-4 flex justify-between items-center shrink-0">
+        <div class="flex items-center gap-3">
+            <div class="w-8 h-8 bg-[#007fd4] rounded flex items-center justify-center text-white font-bold text-lg">JS</div>
+            <h1 class="text-xl font-bold text-white tracking-wide">Clay Engine <span class="text-[#007fd4]">Scripting API</span></h1>
+        </div>
+        <div class="text-sm text-gray-400">Documentation Version 1.0</div>
+    </header>
+
+    <!-- Main Workspace -->
+    <div class="flex flex-1 overflow-hidden">
+        
+        <!-- Left Sidebar: Navigation -->
+        <nav class="w-64 bg-[#252526] border-r border-[#3e3e42] flex flex-col shrink-0">
+            <div class="p-4 border-b border-[#3e3e42]">
+                <h2 class="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">Namespaces</h2>
+                <input type="text" id="search-input" placeholder="Filter API..." class="w-full bg-[#3c3c3c] border border-[#111] rounded px-3 py-1 text-sm text-white focus:border-[#007fd4] focus:outline-none placeholder-gray-500">
+            </div>
+            <div id="nav-list" class="flex-1 overflow-y-auto p-2 space-y-1">
+                <!-- Nav items injected by JS -->
+            </div>
+            
+            <!-- Quick Stats Area -->
+            <div class="p-4 border-t border-[#3e3e42] bg-[#1e1e1e]">
+                <h3 class="text-xs font-bold text-gray-500 uppercase mb-2">API Coverage</h3>
+                <div class="chart-container h-32">
+                    <canvas id="apiDistributionChart"></canvas>
+                </div>
+            </div>
+        </nav>
+
+        <!-- Center Panel: Documentation Viewer -->
+        <main class="flex-1 flex flex-col min-w-0 bg-[#1e1e1e] overflow-y-auto relative">
+            
+            <!-- Hero / Welcome State -->
+            <div id="hero-section" class="p-8 max-w-4xl mx-auto w-full">
+                <h2 class="text-3xl font-light text-white mb-6">Welcome to the <span class="text-[#007fd4] font-bold">Scripting System</span></h2>
+                <p class="text-lg text-gray-400 mb-8 leading-relaxed">
+                    This engine uses a component-based behavior system. Scripts are written in standard JavaScript and attached to entities to drive logic, physics, and interaction.
+                </p>
+
+                <!-- Key Concepts Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-12">
+                    <div class="bg-[#252526] p-6 rounded border border-[#3e3e42] hover:border-[#007fd4] transition-colors cursor-pointer group" onclick="app.loadSection('Lifecycle')">
+                        <div class="text-2xl mb-2 group-hover:scale-110 transition-transform origin-left">🔄</div>
+                        <h3 class="text-xl font-bold text-white mb-2">The Game Loop</h3>
+                        <p class="text-sm text-gray-400">Understand <code>start()</code>, <code>update()</code>, and physics callbacks.</p>
+                    </div>
+                    <div class="bg-[#252526] p-6 rounded border border-[#3e3e42] hover:border-[#007fd4] transition-colors cursor-pointer group" onclick="app.loadSection('Entity')">
+                        <div class="text-2xl mb-2 group-hover:scale-110 transition-transform origin-left">📦</div>
+                        <h3 class="text-xl font-bold text-white mb-2">Entity Control</h3>
+                        <p class="text-sm text-gray-400">Manipulate position, rotation, and components.</p>
+                    </div>
+                    <div class="bg-[#252526] p-6 rounded border border-[#3e3e42] hover:border-[#007fd4] transition-colors cursor-pointer group" onclick="app.loadSection('Engine')">
+                        <div class="text-2xl mb-2 group-hover:scale-110 transition-transform origin-left">🛠️</div>
+                        <h3 class="text-xl font-bold text-white mb-2">God Mode</h3>
+                        <p class="text-sm text-gray-400">Spawn and destroy objects using the <code>Engine</code> API.</p>
+                    </div>
+                    <div class="bg-[#252526] p-6 rounded border border-[#3e3e42] hover:border-[#007fd4] transition-colors cursor-pointer group" onclick="app.loadSection('Events')">
+                        <div class="text-2xl mb-2 group-hover:scale-110 transition-transform origin-left">📡</div>
+                        <h3 class="text-xl font-bold text-white mb-2">Events System</h3>
+                        <p class="text-sm text-gray-400">Decouple logic with global messaging.</p>
+                    </div>
+                </div>
+
+                <!-- Frequency Chart -->
+                <div class="bg-[#252526] p-6 rounded border border-[#3e3e42]">
+                    <h3 class="text-sm font-bold text-gray-400 uppercase mb-4">Execution Frequency Visualizer</h3>
+                    <div class="w-full h-64 chart-container">
+                        <canvas id="frequencyChart"></canvas>
+                    </div>
+                    <p class="text-xs text-center text-gray-500 mt-2">Comparison of how often lifecycle methods are called per second.</p>
+                </div>
+            </div>
+
+            <!-- Dynamic Content Container -->
+            <div id="content-section" class="hidden p-8 max-w-4xl mx-auto w-full animate-fade-in">
+                <div class="flex items-center gap-4 mb-6 pb-4 border-b border-[#3e3e42]">
+                    <div id="content-icon" class="text-4xl"></div>
+                    <div>
+                        <h2 id="content-title" class="text-3xl font-bold text-white"></h2>
+                        <p id="content-desc" class="text-[#007fd4] font-mono text-sm mt-1"></p>
+                    </div>
+                </div>
+
+                <div id="content-body" class="space-y-8">
+                    <!-- Methods and Properties injected here -->
+                </div>
+            </div>
+
+        </main>
+
+        <!-- Right Panel: Code Lab -->
+        <aside class="w-96 bg-[#1e1e1e] border-l border-[#3e3e42] flex flex-col shrink-0 hidden lg:flex">
+            <div class="p-3 bg-[#252526] border-b border-[#3e3e42] flex justify-between items-center">
+                <span class="text-xs font-bold text-gray-300 uppercase">Code Recipes</span>
+                <span class="text-xs text-gray-500">Read-Only</span>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-4 space-y-6">
+                
+                <!-- Recipe Card -->
+                <div class="bg-[#2d2d2d] rounded border border-[#3e3e42] overflow-hidden">
+                    <div class="bg-[#333] px-3 py-2 text-xs font-mono text-gray-300 border-b border-[#3e3e42] flex items-center gap-2">
+                        <span class="text-[#e5c07b]">JS</span> Basic Movement
+                    </div>
+                    <div class="p-3 font-mono text-xs leading-relaxed whitespace-pre overflow-x-auto" id="code-recipe-1">
+                        <!-- Code injected by JS -->
+                    </div>
+                </div>
+
+                <div class="bg-[#2d2d2d] rounded border border-[#3e3e42] overflow-hidden">
+                    <div class="bg-[#333] px-3 py-2 text-xs font-mono text-gray-300 border-b border-[#3e3e42] flex items-center gap-2">
+                        <span class="text-[#e5c07b]">JS</span> Spawning Objects
+                    </div>
+                    <div class="p-3 font-mono text-xs leading-relaxed whitespace-pre overflow-x-auto" id="code-recipe-2">
+                        <!-- Code injected by JS -->
+                    </div>
+                </div>
+
+                <div class="bg-[#2d2d2d] rounded border border-[#3e3e42] overflow-hidden">
+                    <div class="bg-[#333] px-3 py-2 text-xs font-mono text-gray-300 border-b border-[#3e3e42] flex items-center gap-2">
+                        <span class="text-[#e5c07b]">JS</span> Event Listener
+                    </div>
+                    <div class="p-3 font-mono text-xs leading-relaxed whitespace-pre overflow-x-auto" id="code-recipe-3">
+                        <!-- Code injected by JS -->
+                    </div>
+                </div>
+
+            </div>
+        </aside>
+
+    </div>
+
+    <!-- Data & Logic -->
+    <script>
+        // --- Data Model: Extracted from Scripting_API.md ---
+        const apiData = {
+            "Lifecycle": {
+                icon: "🔄",
+                desc: "Automatic functions called by the game loop.",
+                items: [
+                    { name: "start()", type: "Function", desc: "Called once when the entity is created. Use for initialization." },
+                    { name: "update(dt)", type: "Function", desc: "Called every frame. 'dt' is Delta Time in seconds." },
+                    { name: "onCollisionEnter(other, contact)", type: "Function", desc: "Called when physics body begins touching another." }
+                ]
+            },
+            "Entity": {
+                icon: "📦",
+                desc: "The object the script is attached to.",
+                items: [
+                    { name: "entity.name", type: "Property", desc: "String name of the object." },
+                    { name: "entity.object", type: "Property", desc: "Reference to the THREE.Object3D (mesh/light)." },
+                    { name: "entity.addComponent(type, data)", type: "Method", desc: "Adds a component dynamically." },
+                    { name: "entity.getComponent(type)", type: "Method", desc: "Returns component data." },
+                    { name: "entity.setParent(id)", type: "Method", desc: "Re-parents the entity." }
+                ]
+            },
+            "Input": {
+                icon: "🎮",
+                desc: "Keyboard and mouse interaction.",
+                items: [
+                    { name: "Input.getKey(code)", type: "Method", desc: "Returns true while key is held." },
+                    { name: "Input.getKeyDown(code)", type: "Method", desc: "Returns true only on press frame." }
+                ]
+            },
+            "Engine": {
+                icon: "🛠️",
+                desc: "God-mode controls for scene management.",
+                items: [
+                    { name: "Engine.createEntity(name, type)", type: "Method", desc: "Spawns a new entity ('cube', 'empty')." },
+                    { name: "Engine.destroy(entity)", type: "Method", desc: "Removes an entity from the game." },
+                    { name: "Engine.find(name)", type: "Method", desc: "Searches for an entity by name." }
+                ]
+            },
+            "Events": {
+                icon: "📡",
+                desc: "Global messaging system.",
+                items: [
+                    { name: "Events.emit(name, data)", type: "Method", desc: "Broadcast a message globally." },
+                    { name: "Events.on(name, callback)", type: "Method", desc: "Subscribe to a message." },
+                    { name: "Events.off(name, callback)", type: "Method", desc: "Unsubscribe from a message." }
+                ]
+            },
+            "Debug": {
+                icon: "🐞",
+                desc: "In-game console logging.",
+                items: [
+                    { name: "Debug.log(msg)", type: "Method", desc: "Print info message (green)." },
+                    { name: "Debug.error(msg)", type: "Method", desc: "Print error message (red)." }
+                ]
+            },
+            "Mathf": {
+                icon: "➗",
+                desc: "Math helpers.",
+                items: [
+                    { name: "Mathf.lerp(a, b, t)", type: "Method", desc: "Linear interpolation." },
+                    { name: "Mathf.clamp(val, min, max)", type: "Method", desc: "Constrain value between min and max." }
+                ]
+            }
+        };
+
+        const codeSnippets = {
+            1: `<span class="code-keyword">function</span> <span class="code-function">update</span>(dt) {
+    <span class="code-keyword">const</span> speed = <span class="code-number">5.0</span>;
+    <span class="code-keyword">if</span> (<span class="code-object">Input</span>.getKey(<span class="code-string">'KeyW'</span>)) {
+        <span class="code-object">entity</span>.object.position.z -= speed * dt;
+    }
+}`,
+            2: `<span class="code-keyword">if</span> (<span class="code-object">Input</span>.getKeyDown(<span class="code-string">'Space'</span>)) {
+    <span class="code-keyword">let</span> b = <span class="code-object">Engine</span>.createEntity(<span class="code-string">"Bullet"</span>, <span class="code-string">"cube"</span>);
+    b.object.position.copy(<span class="code-object">entity</span>.object.position);
+    <span class="code-comment">// Add Physics</span>
+    b.addComponent(<span class="code-string">'Physics'</span>, { type: <span class="code-string">'Dynamic'</span> });
+}`,
+            3: `<span class="code-keyword">function</span> <span class="code-function">start</span>() {
+    <span class="code-object">Events</span>.on(<span class="code-string">'KillEnemy'</span>, (target) => {
+        <span class="code-keyword">if</span> (<span class="code-object">entity</span>.name === target) {
+            <span class="code-object">Engine</span>.destroy(<span class="code-object">entity</span>);
+        }
+    });
+}`
+        };
+
+        // --- Application Logic ---
+        const app = {
+            init: function() {
+                this.renderNav();
+                this.renderCharts();
+                this.injectCode();
+                
+                // Search Listener
+                document.getElementById('search-input').addEventListener('input', (e) => {
+                    this.filterNav(e.target.value.toLowerCase());
+                });
+            },
+
+            renderNav: function() {
+                const nav = document.getElementById('nav-list');
+                nav.innerHTML = '';
+                Object.keys(apiData).forEach(key => {
+                    const el = document.createElement('div');
+                    el.className = 'nav-item p-2 rounded cursor-pointer text-gray-400 hover:bg-[#37373d] hover:text-white flex items-center gap-2 transition-colors';
+                    el.innerHTML = `<span>${apiData[key].icon}</span> <span class="font-mono text-sm">${key}</span>`;
+                    el.onclick = () => this.loadSection(key);
+                    el.dataset.key = key.toLowerCase(); // For search
+                    nav.appendChild(el);
+                });
+            },
+
+            filterNav: function(term) {
+                const items = document.querySelectorAll('.nav-item');
+                items.forEach(item => {
+                    if(item.dataset.key.includes(term)) {
+                        item.style.display = 'flex';
+                    } else {
+                        item.style.display = 'none';
+                    }
+                });
+            },
+
+            loadSection: function(key) {
+                const data = apiData[key];
+                if(!data) return;
+
+                // Hide Hero, Show Content
+                document.getElementById('hero-section').classList.add('hidden');
+                const contentSection = document.getElementById('content-section');
+                contentSection.classList.remove('hidden');
+
+                // Update Header
+                document.getElementById('content-icon').textContent = data.icon;
+                document.getElementById('content-title').textContent = key;
+                document.getElementById('content-desc').textContent = data.desc;
+
+                // Build Body
+                const body = document.getElementById('content-body');
+                body.innerHTML = '';
+
+                data.items.forEach(item => {
+                    const block = document.createElement('div');
+                    block.className = 'bg-[#252526] border border-[#3e3e42] rounded p-4';
+                    
+                    const typeColor = item.type === 'Method' || item.type === 'Function' ? 'text-[#dcdcaa]' : 'text-[#9cdcfe]';
+                    
+                    block.innerHTML = `
+                        <div class="flex items-baseline gap-3 mb-2 border-b border-[#3e3e42] pb-2">
+                            <span class="text-xs font-bold bg-[#333] px-2 py-0.5 rounded text-gray-400 uppercase">${item.type}</span>
+                            <code class="font-mono text-lg ${typeColor}">${item.name}</code>
+                        </div>
+                        <p class="text-gray-400 text-sm leading-relaxed">${item.desc}</p>
+                    `;
+                    body.appendChild(block);
+                });
+            },
+
+            injectCode: function() {
+                document.getElementById('code-recipe-1').innerHTML = codeSnippets[1];
+                document.getElementById('code-recipe-2').innerHTML = codeSnippets[2];
+                document.getElementById('code-recipe-3').innerHTML = codeSnippets[3];
+            },
+
+            renderCharts: function() {
+                // 1. Distribution Chart
+                const ctxDist = document.getElementById('apiDistributionChart').getContext('2d');
+                new Chart(ctxDist, {
+                    type: 'doughnut',
+                    data: {
+                        labels: Object.keys(apiData),
+                        datasets: [{
+                            data: Object.values(apiData).map(d => d.items.length),
+                            backgroundColor: ['#007fd4', '#4ec9b0', '#ce9178', '#dcdcaa', '#c586c0', '#569cd6', '#4fc1ff'],
+                            borderWidth: 0
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false }
+                        },
+                        cutout: '70%'
+                    }
+                });
+
+                // 2. Frequency Chart (Canvas)
+                const ctxFreq = document.getElementById('frequencyChart').getContext('2d');
+                new Chart(ctxFreq, {
+                    type: 'bar',
+                    data: {
+                        labels: ['start()', 'onCollision()', 'update()'],
+                        datasets: [{
+                            label: 'Calls per Second (Approx)',
+                            data: [1, 5, 60], // Start runs once, collision varies, update 60
+                            backgroundColor: ['#4ec9b0', '#ce9178', '#dcdcaa'],
+                            borderRadius: 4
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        scales: {
+                            y: { 
+                                beginAtZero: true,
+                                grid: { color: '#333' },
+                                ticks: { color: '#888' }
+                            },
+                            x: {
+                                grid: { display: false },
+                                ticks: { color: '#ccc' }
+                            }
+                        },
+                        plugins: {
+                            legend: { display: false }
+                        }
+                    }
+                });
+            }
+        };
+
+        // Boot
+        window.onload = () => app.init();
+
+    </script>
+</body>
+</html>

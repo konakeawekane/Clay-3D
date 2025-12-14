@@ -1,0 +1,1841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Web3D Game Engine - Fixes v21</title>
+    <style>
+        :root {
+            --bg-dark: #1e1e1e;
+            --bg-panel: #252526;
+            --text-main: #cccccc;
+            --accent: #007fd4;
+            --border: #3e3e42;
+            --resize-handle: #007fd4;
+            --success: #1a5c20;
+            --danger: #d32f2f;
+            --warning: #d68910;
+        }
+        body { margin: 0; overflow: hidden; font-family: 'Segoe UI', Tahoma, sans-serif; color: var(--text-main); background: var(--bg-dark); }
+        
+        /* Layout */
+        #app { display: flex; height: 100vh; width: 100vw; transition: all 0.3s; }
+        .panel { background: var(--bg-panel); display: flex; flex-direction: column; min-width: 150px; transition: transform 0.3s ease; }
+        #left-panel { width: 250px; }
+        #inspector { width: 300px; }
+        body.play-mode .panel, body.play-mode .resizer { display: none !important; }
+        body.play-mode #viewport { width: 100vw; height: 100vh; }
+        #viewport { flex-grow: 1; position: relative; background: #000; overflow: hidden; }
+
+        /* Top Toolbar */
+        #top-bar {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            z-index: 1000; display: flex; gap: 10px;
+            background: rgba(30, 30, 30, 0.8); padding: 5px 15px; border-radius: 20px;
+            border: 1px solid var(--border); backdrop-filter: blur(5px);
+        }
+        .tool-btn {
+            background: #3e3e42; border: none; color: white; padding: 5px 15px; 
+            cursor: pointer; border-radius: 4px; font-weight: bold; font-size: 0.85rem;
+            display: flex; align-items: center; gap: 5px;
+        }
+        .tool-btn:hover { background: #505055; }
+        #btn-play { background: var(--success); color: #81c784; }
+        #btn-play:hover { background: #2e7d32; }
+        #btn-stop { background: #7f1d1d; color: #ef9a9a; display: none; }
+        #btn-stop:hover { background: #b71c1c; }
+        
+        #btn-save { background: #283593; color: #9fa8da; }
+        #btn-save:hover { background: #3949ab; }
+        #btn-load { background: #e65100; color: #ffcc80; }
+        #btn-load:hover { background: #f57c00; }
+
+        /* Game Console */
+        #game-console {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 200px;
+            background: rgba(0,0,0,0.85); border-top: 1px solid var(--accent);
+            z-index: 2000; display: none; flex-direction: column;
+            font-family: 'Consolas', monospace; font-size: 13px;
+        }
+        #console-header {
+            padding: 5px 10px; background: #333; color: #fff; font-weight: bold;
+            display: flex; justify-content: space-between; cursor: pointer;
+        }
+        #console-output { flex: 1; overflow-y: auto; padding: 10px; color: #ddd; }
+        .log-msg { margin-bottom: 2px; border-bottom: 1px solid #222; }
+        .log-info { color: #81c784; }
+        .log-warn { color: #ffb74d; }
+        .log-error { color: #e57373; }
+
+        /* Resizers */
+        .resizer { width: 4px; background: #111; cursor: col-resize; z-index: 10; flex-shrink: 0; }
+        .resizer:hover, .resizer.resizing { background: var(--resize-handle); }
+
+        /* UI Elements */
+        .panel-header { padding: 10px; background: #333; font-weight: bold; border-bottom: 1px solid var(--border); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 1px;}
+        .tab-header { display: flex; background: #333; border-bottom: 1px solid var(--border); }
+        .tab-btn { 
+            flex: 1; padding: 10px; cursor: pointer; text-align: center; 
+            background: #252526; color: #888; border: none; outline: none; font-size: 0.85rem; text-transform: uppercase; font-weight: bold;
+        }
+        .tab-btn.active { background: var(--bg-panel); color: white; border-bottom: 2px solid var(--accent); }
+        .tab-content { flex: 1; overflow-y: auto; display: none; }
+        .tab-content.active { display: block; }
+        #properties-content, #world-content { padding: 0; }
+
+        /* Entity List */
+        .entity-item { padding: 6px 10px; cursor: pointer; border-bottom: 1px solid #2d2d2d; font-size: 0.9rem; display: flex; align-items: center; color: #aaa; }
+        .entity-item:before { content: '📦'; margin-right: 8px; filter: grayscale(1); font-size: 0.8rem;}
+        .entity-item.light:before { content: '💡'; }
+        .entity-item.playerstart:before { content: '🎥'; filter: none; }
+        .entity-item.imported:before { content: '✨'; filter: none; }
+        .entity-item:hover { background: #2a2d2e; color: #fff; }
+        .entity-item.selected { background: var(--accent); color: white; }
+        .entity-item.selected:before { filter: none; }
+        .entity-indent { display: inline-block; width: 0; }
+        .entity-delete { margin-left: auto; cursor: pointer; color: #666; font-weight: bold; padding: 4px 8px; border-radius: 4px; z-index: 5; position: relative; }
+        .entity-delete:hover { color: white; background: var(--danger); }
+
+        /* Script Tab Elements */
+        #btn-create-script {
+            width: 100%; padding: 8px; background: #333; color: #ccc; border: 1px dashed #555;
+            cursor: pointer; margin-bottom: 0; font-size: 0.85rem;
+        }
+        #btn-create-script:hover { background: #444; border-color: var(--accent); color: white; }
+        .script-item { padding: 8px 10px; border-bottom: 1px solid #2d2d2d; font-size: 0.9rem; cursor: pointer; display: flex; align-items: center;}
+        .script-item:before { content: '📜'; margin-right: 8px; }
+        .script-item:hover { background: #2a2d2e; color: white; }
+
+        .script-api-link {
+            width: 1fr; padding: 8px; background: #333; color: #ccc; border: 1px dashed #555;
+            cursor: pointer; margin-bottom: 10px; font-size: 0.85rem; text-decoration: none; display:block;
+            justify-self: center;
+        }
+        .script-api-link:hover { background: #444; border-color: var(--accent); color: white; }
+        
+        .script-action-btn { color: #666; font-weight: bold; padding: 0 5px; cursor: pointer; margin-left: 5px; position: relative; z-index: 5;}
+        .script-action-btn:hover { color: white; }
+        .script-action-btn.delete:hover { color: var(--danger); }
+
+        /* Script Editor Window */
+        #script-editor {
+            position: absolute; top: 100px; left: 300px; width: 500px; height: 400px;
+            background: #1e1e1e; border: 1px solid var(--accent);
+            display: none; flex-direction: column; z-index: 2000;
+            box-shadow: 0 0 20px rgba(0,0,0,0.5); resize: both; overflow: hidden;
+        }
+        #script-editor-header {
+            padding: 8px 10px; background: #333; color: white; cursor: move;
+            font-weight: bold; font-size: 0.9rem; display: flex; justify-content: space-between;
+            user-select: none;
+        }
+        #script-code-area {
+            flex: 1; background: #111; color: #d4d4d4; border: none; padding: 10px;
+            font-family: 'Consolas', 'Monaco', monospace; font-size: 14px; resize: none; outline: none;
+        }
+        #script-editor-footer {
+            padding: 8px; background: #252526; display: flex; justify-content: flex-end; gap: 10px;
+        }
+        .editor-btn { padding: 5px 15px; border: none; cursor: pointer; border-radius: 3px; font-weight: bold; }
+        .editor-btn.save { background: var(--accent); color: white; }
+        .editor-btn.close { background: #444; color: #ccc; }
+
+        /* Library Grid */
+        #import-section { padding: 10px; border-bottom: 1px solid var(--border); text-align: center; }
+        #btn-import { width: 100%; padding: 8px; background: #444; color: white; border: 1px dashed #666; cursor: pointer; border-radius: 4px; font-size: 0.85rem; }
+        #btn-import:hover { background: #505050; border-color: var(--accent); }
+
+        .library-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 10px; }
+        .lib-item { 
+            background: #3c3c3c; padding: 15px; text-align: center; cursor: pointer; 
+            border-radius: 4px; border: 1px solid transparent; transition: 0.2s; 
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            overflow: hidden;
+        }
+        .lib-item:hover { background: #444; border-color: var(--accent); transform: translateY(-2px); }
+        .lib-icon { font-size: 24px; margin-bottom: 8px; }
+        .lib-label { font-size: 0.8rem; color: #ccc; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+        /* Inspector Components */
+        .component { border-bottom: 1px solid var(--border); padding: 10px; position: relative; }
+        .component-title { font-weight: bold; margin-bottom: 10px; color: #fff; font-size: 0.8rem; text-transform: uppercase; opacity: 0.7; display: flex; justify-content: space-between;}
+        .prop-row { display: flex; align-items: center; margin-bottom: 5px; font-size: 0.85rem; }
+        .prop-label { width: 90px; color: #aaa; }
+        .prop-input { flex: 1; background: #3c3c3c; border: 1px solid #111; color: white; padding: 4px; border-radius: 3px; min-width: 0; }
+        .prop-input:focus { border-color: var(--accent); outline: none; }
+        .vec3-row { display: flex; gap: 5px; flex: 1; }
+        .vec3-input { width: 100%; text-align: center; }
+
+        /* Add Component Section */
+        #add-component-area { padding: 15px; border-top: 2px solid var(--border); background: #2d2d2d; text-align: center; }
+        #add-comp-select { width: 70%; padding: 5px; background: #3c3c3c; color: white; border: 1px solid #111; border-radius: 3px; margin-bottom: 5px;}
+        #btn-add-comp { width: 25%; padding: 5px; background: var(--accent); color: white; border: none; cursor: pointer; border-radius: 3px; }
+        .btn-delete-comp { color: #f44336; cursor: pointer; font-size: 0.8rem; }
+        .btn-delete-comp:hover { text-decoration: underline; }
+
+        /* Overlay */
+        #play-overlay { position: absolute; top: 20px; right: 20px; color: white; background: rgba(0,0,0,0.5); padding: 10px; border-radius: 5px; display: none; pointer-events: none;}
+        body.play-mode #play-overlay { display: block; }
+    </style>
+    
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+                "cannon-es": "https://unpkg.com/cannon-es@0.20.0/dist/cannon-es.js"
+            }
+        }
+    </script>
+</head>
+<body>
+
+<div id="top-bar">
+    <button id="btn-save" class="tool-btn">Save</button>
+    <button id="btn-load" class="tool-btn">Load</button>
+    <div style="width: 20px;"></div>
+    <button id="btn-play" class="tool-btn">▶ PLAY</button>
+    <button id="btn-stop" class="tool-btn">⏹ STOP</button>
+</div>
+
+<!-- Hidden File Inputs -->
+<input type="file" id="file-input" multiple accept=".obj,.png,.jpg,.jpeg">
+<input type="file" id="file-input-load" accept=".json" style="display:none">
+
+<!-- Script Editor Modal -->
+<div id="script-editor">
+    <div id="script-editor-header">
+        <span id="editor-title">Script Editor</span>
+        <span id="close-editor" style="cursor:pointer;">×</span>
+    </div>
+    <textarea id="script-code-area" spellcheck="false"></textarea>
+    <div id="script-editor-footer">
+        <button id="btn-save-script" class="editor-btn save">Save</button>
+    </div>
+</div>
+
+<!-- Game Console -->
+<div id="game-console">
+    <div id="console-header">
+        <span>Game Console (Press ~ to toggle)</span>
+        <span onclick="document.getElementById('game-console').style.display='none'">×</span>
+    </div>
+    <div id="console-output"></div>
+</div>
+
+<div id="app">
+    <!-- Left Panel -->
+    <div id="left-panel" class="panel">
+        <div class="tab-header">
+            <button class="tab-btn active" data-tab="hierarchy">Hierarchy</button>
+            <button class="tab-btn" data-tab="library">Library</button>
+            <button class="tab-btn" data-tab="scripts">Scripts</button>
+        </div>
+        
+        <div id="hierarchy-content" class="tab-content active">
+            <div id="entity-list"></div>
+        </div>
+
+        <div id="library-content" class="tab-content">
+            <div id="import-section">
+                <button id="btn-import">Import Asset (.obj, .png, .jpg)</button>
+            </div>
+            <div class="library-grid" id="library-grid">
+                <!-- Standard Items -->
+                <div class="lib-item" id="btn-add-start">
+                    <span class="lib-icon">🎥</span><span class="lib-label">Player Start</span>
+                </div>
+                <div class="lib-item" id="btn-add-cube">
+                    <span class="lib-icon">🧊</span><span class="lib-label">Cube</span>
+                </div>
+                <div class="lib-item" id="btn-add-sphere">
+                    <span class="lib-icon">🔮</span><span class="lib-label">Sphere</span>
+                </div>
+                <div class="lib-item" id="btn-add-plane">
+                    <span class="lib-icon">⬛</span><span class="lib-label">Floor</span>
+                </div>
+                <div class="lib-item" id="btn-add-light">
+                    <span class="lib-icon">💡</span><span class="lib-label">Light</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="scripts-content" class="tab-content">
+            <div style="padding:10px;">
+                <button id="btn-create-script">+ New Script</button>
+            </div>
+            <div style="padding:10px;">
+                <a class="script-api-link" href="api.html" target="_blank">API</a>
+            </div>
+            <div id="script-list"></div>
+        </div>
+    </div>
+    
+    <div class="resizer" id="resizer-left"></div>
+    <div id="viewport">
+        <div id="play-overlay">Camera: Active</div>
+    </div>
+    <div class="resizer" id="resizer-right"></div>
+
+    <!-- Right Panel -->
+    <div id="inspector" class="panel">
+        <div class="tab-header">
+            <button class="tab-btn active" data-tab="properties">Properties</button>
+            <button class="tab-btn" data-tab="world">World</button>
+        </div>
+
+        <div id="properties-content" class="tab-content active">
+            <div id="component-list">
+                <div style="padding:20px; color:#666; text-align:center;">Select an entity</div>
+            </div>
+            <div id="add-component-area" style="display:none;">
+                <select id="add-comp-select"></select>
+                <button id="btn-add-comp">Add</button>
+            </div>
+        </div>
+
+        <div id="world-content" class="tab-content">
+            <div id="world-settings-list"></div>
+        </div>
+    </div>
+</div>
+
+<script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import * as CANNON from 'cannon-es';
+
+    // ==========================================
+    // 0. GLOBAL STATE & CORE UTILS
+    // ==========================================
+    let isPlaying = false;
+    let prevTime = 0;
+    
+    class InputManager {
+        static keys = {};
+        static keysDown = {};
+        static mouse = { x: 0, y: 0 };
+
+        static init() {
+            window.addEventListener('keydown', (e) => {
+                InputManager.keys[e.code] = true;
+                if(!e.repeat) InputManager.keysDown[e.code] = true;
+            });
+            window.addEventListener('keyup', (e) => {
+                InputManager.keys[e.code] = false;
+            });
+            window.addEventListener('keydown', (e) => {
+                if(e.key === '`' || e.key === '~') {
+                    const con = document.getElementById('game-console');
+                    con.style.display = con.style.display === 'none' ? 'flex' : 'none';
+                }
+            });
+        }
+        static update() { InputManager.keysDown = {}; }
+        static getKey(code) { return !!InputManager.keys[code]; }
+        static getKeyDown(code) { return !!InputManager.keysDown[code]; }
+    }
+    InputManager.init();
+
+    class Debug {
+        static log(msg) { Debug.print(msg, 'info'); }
+        static warn(msg) { Debug.print(msg, 'warn'); }
+        static error(msg) { Debug.print(msg, 'error'); }
+        static print(msg, type) {
+            const out = document.getElementById('console-output');
+            const el = document.createElement('div');
+            el.className = `log-msg log-${type}`;
+            el.innerText = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            out.appendChild(el);
+            out.scrollTop = out.scrollHeight;
+        }
+        static clear() { document.getElementById('console-output').innerHTML = ''; }
+    }
+
+    class Events {
+        static listeners = {};
+        static on(event, callback) {
+            if(!this.listeners[event]) this.listeners[event] = [];
+            this.listeners[event].push(callback);
+        }
+        static emit(event, data) {
+            if(this.listeners[event]) this.listeners[event].forEach(cb => cb(data));
+        }
+        static off(event, callback) {
+            if(this.listeners[event]) this.listeners[event] = this.listeners[event].filter(cb => cb !== callback);
+        }
+        static clear() { this.listeners = {}; }
+    }
+
+    class Engine {
+        static createEntity(name, type) {
+            let obj;
+            if(type === 'cube') {
+                const geo = new THREE.BoxGeometry(1, 1, 1);
+                const mat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+                obj = new THREE.Mesh(geo, mat);
+                type = 'mesh';
+            } else if (type === 'empty') {
+                obj = new THREE.Group();
+                type = 'mesh'; 
+            }
+            if(obj) {
+                const ent = new Entity(name, obj, type, 'Default');
+                return ent;
+            }
+            return null;
+        }
+        static destroy(entity) {
+            if(entity && entity.id) deleteEntity(entity.id);
+        }
+        static find(name) {
+            return entities.find(e => e.name === name);
+        }
+    }
+
+    const scripts = []; 
+    let scriptInstances = []; 
+
+    class ScriptExecution {
+        static init() {
+            scriptInstances = [];
+            entities.forEach(ent => {
+                const scriptComp = ent.getComponent('Script');
+                if(scriptComp && scriptComp.data.scriptId) {
+                    const scriptAsset = scripts.find(s => s.id === scriptComp.data.scriptId);
+                    if(scriptAsset) {
+                        try {
+                            const instance = ScriptExecution.compile(ent, scriptAsset.content);
+                            if(instance) {
+                                scriptInstances.push({ entity: ent, instance: instance });
+                                if(instance.start) instance.start();
+                            }
+                        } catch(e) { Debug.error(`Error compiling ${scriptAsset.name}: ${e.message}`); }
+                    }
+                }
+            });
+        }
+
+        static compile(entity, code) {
+            const wrapper = new Function(
+                'entity', 'Input', 'Debug', 'Engine', 'Events', 'THREE', 'Time', 'Mathf', 
+                `
+                ${code}
+                return {
+                    start: (typeof start !== 'undefined' ? start : null),
+                    update: (typeof update !== 'undefined' ? update : null),
+                    onCollisionEnter: (typeof onCollisionEnter !== 'undefined' ? onCollisionEnter : null)
+                };
+                `
+            );
+            const Time = { time: performance.now() / 1000, dt: 0 };
+            const Mathf = { 
+                lerp: (a, b, t) => a + (b - a) * t,
+                clamp: (val, min, max) => Math.min(Math.max(val, min), max)
+            };
+            return wrapper(entity, InputManager, Debug, Engine, Events, THREE, Time, Mathf);
+        }
+
+        static update(dt) {
+            scriptInstances.forEach(item => {
+                if(item.instance.update) {
+                    try { item.instance.update(dt); } catch(e) {
+                        Debug.error(`Runtime Error in ${item.entity.name}: ${e.message}`);
+                        item.instance.update = null; 
+                    }
+                }
+            });
+        }
+        
+        static handleCollision(bodyId, contact) {
+            const entity = entities.find(e => e.physicsBody && e.physicsBody.id === bodyId);
+            if(!entity) return;
+            const item = scriptInstances.find(i => i.entity === entity);
+            if(item && item.instance.onCollisionEnter) {
+                const otherBody = (contact.bi.id === bodyId) ? contact.bj : contact.bi;
+                const otherEntity = entities.find(e => e.physicsBody && e.physicsBody.id === otherBody.id);
+                try { item.instance.onCollisionEnter(otherEntity, contact); } catch(e) { Debug.error(`Collision Error: ${e.message}`); }
+            }
+        }
+    }
+
+    // ==========================================
+    // 1. SCRIPT EDITOR UI
+    // ==========================================
+    let currentEditingScriptId = null;
+
+    function createScript() {
+        const id = 'script_' + Math.random().toString(36).substr(2, 9);
+        const name = 'New Script ' + (scripts.length + 1);
+        const content = `// Script: ${name}
+// Available: entity, Input, Debug, Engine, Events, THREE
+
+function start() {
+    Debug.log("Started " + entity.name);
+}
+
+function update(dt) {
+    // Example: Rotation
+    // entity.object.rotation.y += 1.0 * dt;
+}
+
+function onCollisionEnter(other, contact) {
+    // Debug.log("Hit " + (other ? other.name : "something"));
+}
+`;
+        scripts.push({ id, name, content });
+        renderScriptList();
+        openScriptEditor(id);
+    }
+
+    function renderScriptList() {
+        const list = document.getElementById('script-list');
+        list.innerHTML = '';
+        scripts.forEach(s => {
+            const item = document.createElement('div');
+            item.className = 'script-item';
+            
+            const nameContainer = document.createElement('div');
+            nameContainer.style.flex = "1";
+            nameContainer.style.marginRight = "10px";
+            nameContainer.innerText = s.name;
+            nameContainer.onclick = () => openScriptEditor(s.id);
+            item.appendChild(nameContainer);
+
+            const renameBtn = document.createElement('span');
+            renameBtn.className = 'script-action-btn';
+            renameBtn.innerText = '✎';
+            renameBtn.title = "Rename Script";
+            renameBtn.onclick = (e) => {
+                e.stopPropagation();
+                const input = document.createElement('input');
+                input.type = 'text';
+                input.value = s.name;
+                input.style.width = '100%';
+                input.style.background = '#111';
+                input.style.color = '#fff';
+                input.style.border = '1px solid #007fd4';
+                input.onclick = (ev) => ev.stopPropagation();
+
+                const saveName = () => {
+                    if(input.value.trim() !== "") {
+                        s.name = input.value.trim();
+                        if(currentEditingScriptId === s.id) document.getElementById('editor-title').innerText = 'Editing: ' + s.name;
+                        if(selectedEntityId) renderInspector();
+                    }
+                    renderScriptList();
+                };
+                input.addEventListener('blur', saveName);
+                input.addEventListener('keydown', (ev) => { if(ev.key === 'Enter') input.blur(); });
+                nameContainer.innerHTML = '';
+                nameContainer.appendChild(input);
+                nameContainer.onclick = null;
+                input.focus();
+            };
+            item.appendChild(renameBtn);
+
+            const delBtn = document.createElement('span');
+            delBtn.className = 'script-action-btn delete';
+            delBtn.innerText = '×';
+            delBtn.onclick = (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const idx = scripts.findIndex(sc => sc.id === s.id);
+                if(idx !== -1) scripts.splice(idx, 1);
+                renderScriptList();
+                if(selectedEntityId) renderInspector();
+            };
+            item.appendChild(delBtn);
+            list.appendChild(item);
+        });
+    }
+
+    function openScriptEditor(id) {
+        const script = scripts.find(s => s.id === id);
+        if(!script) return;
+        currentEditingScriptId = id;
+        document.getElementById('editor-title').innerText = 'Editing: ' + script.name;
+        document.getElementById('script-code-area').value = script.content;
+        document.getElementById('script-editor').style.display = 'flex';
+    }
+
+    document.getElementById('btn-create-script').onclick = createScript;
+    document.getElementById('btn-save-script').onclick = () => {
+        if(currentEditingScriptId) {
+            const script = scripts.find(s => s.id === currentEditingScriptId);
+            if(script) script.content = document.getElementById('script-code-area').value;
+        }
+        document.getElementById('script-editor').style.display = 'none';
+    };
+    document.getElementById('close-editor').onclick = () => document.getElementById('script-editor').style.display = 'none';
+
+    // Editor Dragging
+    const editorWin = document.getElementById('script-editor');
+    const editorHead = document.getElementById('script-editor-header');
+    let isDraggingEditor = false;
+    let editorOffset = { x: 0, y: 0 };
+
+    editorHead.addEventListener('mousedown', (e) => {
+        isDraggingEditor = true;
+        editorOffset.x = e.clientX - editorWin.offsetLeft;
+        editorOffset.y = e.clientY - editorWin.offsetTop;
+    });
+    window.addEventListener('mousemove', (e) => {
+        if(isDraggingEditor) {
+            editorWin.style.left = (e.clientX - editorOffset.x) + 'px';
+            editorWin.style.top = (e.clientY - editorOffset.y) + 'px';
+        }
+    });
+    window.addEventListener('mouseup', () => { isDraggingEditor = false; });
+
+
+    // ==========================================
+    // 0. ASSET MANAGEMENT & CORE
+    // ==========================================
+    
+    // Updated Assets Registry to store raw data for save/load
+    let assets = { 
+        meshes: {}, 
+        textures: {},
+        registry: {} // Stores raw data: { name: { type: 'obj'|'img', data: string|base64 } }
+    };
+
+    const MATERIAL_PRESETS = {
+        'Default': { color: 0xffffff, roughness: 0.5, metalness: 0.0, emissive: 0x000000 },
+        'Dirt':    { color: 0x5d4037, roughness: 1.0, metalness: 0.0, emissive: 0x000000 },
+        'Wood':    { color: 0x8d6e63, roughness: 0.7, metalness: 0.0, emissive: 0x000000 },
+        'Rock':    { color: 0x757575, roughness: 0.9, metalness: 0.1, emissive: 0x000000 },
+        'Metal':   { color: 0xc0c0c0, roughness: 0.2, metalness: 1.0, emissive: 0x000000 },
+        'Grass':   { color: 0x4caf50, roughness: 0.8, metalness: 0.0, emissive: 0x000000 },
+        'Fire':    { color: 0xff5722, roughness: 1.0, metalness: 0.0, emissive: 0xff3d00 }
+    };
+
+    function updateEntityMaterial(entity, data) {
+        const applyToMesh = (mesh) => {
+            if (!mesh.material) mesh.material = new THREE.MeshStandardMaterial();
+            if (Array.isArray(mesh.material)) mesh.material = mesh.material[0];
+
+            if (data.useTexture && data.textureName && assets.textures[data.textureName]) {
+                mesh.material.map = assets.textures[data.textureName];
+                mesh.material.color.setHex(0xffffff); 
+            } else {
+                mesh.material.map = null;
+                const props = MATERIAL_PRESETS[data.preset] || MATERIAL_PRESETS['Default'];
+                mesh.material.color.setHex(props.color);
+                if(mesh.material.emissive) mesh.material.emissive.setHex(props.emissive);
+                if(mesh.material.roughness !== undefined) mesh.material.roughness = props.roughness;
+                if(mesh.material.metalness !== undefined) mesh.material.metalness = props.metalness;
+            }
+            mesh.material.needsUpdate = true;
+        };
+
+        if (entity.object.isGroup) {
+            entity.object.traverse(child => {
+                if(child.isMesh) applyToMesh(child);
+            });
+        } else if (entity.object.isMesh) {
+            applyToMesh(entity.object);
+        }
+    }
+
+    const fileInput = document.getElementById('file-input');
+    const importBtn = document.getElementById('btn-import');
+    importBtn.onclick = () => fileInput.click();
+
+    // Import with FileReader for Persistence
+    fileInput.onchange = (e) => {
+        Array.from(e.target.files).forEach(file => {
+            const ext = file.name.split('.').pop().toLowerCase();
+            const reader = new FileReader();
+
+            if(['png', 'jpg', 'jpeg'].includes(ext)) {
+                reader.onload = (ev) => {
+                    const dataUrl = ev.target.result;
+                    // Register asset
+                    assets.registry[file.name] = { type: 'img', data: dataUrl };
+                    // Load into Three.js
+                    new THREE.TextureLoader().load(dataUrl, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        assets.textures[file.name] = tex;
+                        if(selectedEntityId) renderInspector();
+                    });
+                };
+                reader.readAsDataURL(file);
+            } 
+            else if (ext === 'obj') {
+                reader.onload = (ev) => {
+                    const text = ev.target.result;
+                    assets.registry[file.name] = { type: 'obj', data: text };
+                    const obj = new OBJLoader().parse(text);
+                    assets.meshes[file.name] = obj;
+                    addMeshToLibrary(file.name);
+                };
+                reader.readAsText(file);
+            }
+        });
+        fileInput.value = ''; 
+    };
+
+    function addMeshToLibrary(name) {
+        // Prevent duplicates in UI
+        const existing = Array.from(document.querySelectorAll('.lib-label')).find(el => el.innerText === name);
+        if(existing) return;
+
+        const grid = document.getElementById('library-grid');
+        const item = document.createElement('div');
+        item.className = 'lib-item';
+        item.innerHTML = `<span class="lib-icon">✨</span><span class="lib-label">${name}</span>`;
+        item.onclick = () => {
+            const original = assets.meshes[name];
+            const clone = original.clone();
+            clone.traverse(child => {
+                if(child.isMesh) {
+                    child.material = new THREE.MeshStandardMaterial();
+                    child.castShadow = true; child.receiveShadow = true;
+                }
+            });
+            new Entity(name, clone, 'mesh', 'Default', true);
+        };
+        grid.appendChild(item);
+    }
+
+    // ==========================================
+    // 1. ENGINE SETUP
+    // ==========================================
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x111111);
+    scene.fog = new THREE.FogExp2(0x111111, 0.0);
+
+    const gridHelper = new THREE.GridHelper(20, 20, 0x444444, 0x222222);
+    scene.add(gridHelper);
+
+    const editorCamera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerWidth, 0.1, 1000);
+    editorCamera.position.set(5, 5, 5);
+    let activeCamera = editorCamera;
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    const vp = document.getElementById('viewport');
+    renderer.setSize(vp.clientWidth, vp.clientHeight);
+    vp.appendChild(renderer.domElement);
+
+    const orbitControls = new OrbitControls(editorCamera, renderer.domElement);
+    orbitControls.enableDamping = true;
+    
+    const ambientLight = new THREE.AmbientLight(0x404040);
+    scene.add(ambientLight);
+    
+    const dirLight = new THREE.DirectionalLight(0xffffff, 2);
+    dirLight.position.set(5, 10, 7);
+    dirLight.castShadow = true;
+    dirLight.shadow.mapSize.width = 2048;
+    dirLight.shadow.mapSize.height = 2048;
+    scene.add(dirLight);
+
+    const onWindowResize = () => {
+        const width = document.body.classList.contains('play-mode') ? window.innerWidth : vp.clientWidth;
+        const height = document.body.classList.contains('play-mode') ? window.innerHeight : vp.clientHeight;
+        activeCamera.aspect = width / height;
+        activeCamera.updateProjectionMatrix();
+        renderer.setSize(width, height);
+    };
+    window.addEventListener('resize', onWindowResize);
+
+    // ==========================================
+    // 2. PHYSICS
+    // ==========================================
+    let physicsWorld = null;
+    const globalPhysicsSettings = { gravity: -9.82, iterations: 10 };
+
+    function initPhysics() {
+        physicsWorld = new CANNON.World();
+        physicsWorld.gravity.set(0, globalPhysicsSettings.gravity, 0);
+        physicsWorld.solver.iterations = globalPhysicsSettings.iterations;
+
+        physicsWorld.addEventListener('beginContact', (e) => {
+            ScriptExecution.handleCollision(e.bodyA.id, { bi: e.bodyA, bj: e.bodyB });
+            ScriptExecution.handleCollision(e.bodyB.id, { bi: e.bodyB, bj: e.bodyA });
+        });
+
+        const rootEntities = entities.filter(e => !e.parentId);
+        rootEntities.forEach(ent => processEntityPhysics(ent, null));
+
+        const bodies = entities.filter(e => e.physicsBody).map(e => e.physicsBody);
+        for(let i=0; i<bodies.length; i++) {
+            for(let j=i; j<bodies.length; j++) {
+                const b1 = bodies[i];
+                const b2 = bodies[j];
+                const friction = b1.material.friction * b2.material.friction;
+                const restitution = Math.max(b1.material.restitution, b2.material.restitution);
+                const contactMat = new CANNON.ContactMaterial(b1.material, b2.material, { friction, restitution });
+                physicsWorld.addContactMaterial(contactMat);
+            }
+        }
+    }
+
+    function processEntityPhysics(ent, parentBody) {
+        const physComp = ent.getComponent('Physics');
+        if(!physComp) {
+            ent.children.forEach(child => processEntityPhysics(child, null));
+            return;
+        }
+        const type = physComp.data.type;
+        const mass = physComp.data.mass;
+        let body = null;
+
+        if (parentBody && parentBody.mass > 0 && type === 'Dynamic') {
+            addShapeToBody(parentBody, ent);
+            body = parentBody; 
+        } else {
+            body = createBodyForEntity(ent, physComp.data);
+            if(body) {
+                physicsWorld.addBody(body);
+                ent.physicsBody = body;
+            }
+        }
+        ent.children.forEach(child => processEntityPhysics(child, body));
+    }
+
+    function addShapeToBody(body, ent) {
+        const shape = getShape(ent);
+        if(!shape) return;
+        const offset = new CANNON.Vec3(ent.object.position.x, ent.object.position.y, ent.object.position.z);
+        const orientation = new CANNON.Quaternion(ent.object.quaternion.x, ent.object.quaternion.y, ent.object.quaternion.z, ent.object.quaternion.w);
+        body.addShape(shape, offset, orientation);
+    }
+
+    function getShape(ent) {
+        const scale = ent.object.scale;
+        
+        if (!ent.object.geometry) {
+            if (ent.isImported || ent.object.isGroup) {
+                const box = new THREE.Box3().setFromObject(ent.object);
+                const size = new THREE.Vector3();
+                box.getSize(size);
+                return new CANNON.Box(new CANNON.Vec3(size.x * 0.5 * scale.x, size.y * 0.5 * scale.y, size.z * 0.5 * scale.z));
+            }
+            return null;
+        }
+
+        if (ent.object.geometry.type === 'BoxGeometry') return new CANNON.Box(new CANNON.Vec3(scale.x * 0.5, scale.y * 0.5, scale.z * 0.5));
+        if (ent.object.geometry.type === 'SphereGeometry') return new CANNON.Sphere(ent.object.geometry.parameters.radius * scale.x);
+        if (ent.type === 'player_start') return new CANNON.Sphere(0.5);
+        
+        if (ent.isImported) {
+             const box = new THREE.Box3().setFromObject(ent.object);
+             const size = new THREE.Vector3();
+             box.getSize(size);
+             return new CANNON.Box(new CANNON.Vec3(size.x * 0.5 * scale.x, size.y * 0.5 * scale.y, size.z * 0.5 * scale.z));
+        }
+        return null;
+    }
+
+    function createBodyForEntity(ent, data) {
+        const shape = getShape(ent);
+        if(!shape && data.type !== 'Static') return null;
+        
+        const mat = new CANNON.Material({ friction: data.friction, restitution: data.restitution });
+
+        if (ent.object.geometry && ent.object.geometry.type === 'PlaneGeometry') {
+             const body = new CANNON.Body({ mass: 0, shape: new CANNON.Plane(), material: mat });
+             const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion();
+             ent.object.getWorldPosition(worldPos); ent.object.getWorldQuaternion(worldQuat);
+             body.position.copy(worldPos); body.quaternion.copy(worldQuat);
+             return body;
+        }
+        if(!shape) return null;
+
+        const isStatic = data.type === 'Static';
+        const mass = isStatic ? 0 : data.mass;
+
+        const worldPos = new THREE.Vector3(); const worldQuat = new THREE.Quaternion();
+        ent.object.getWorldPosition(worldPos); ent.object.getWorldQuaternion(worldQuat);
+
+        const body = new CANNON.Body({
+            mass: mass,
+            position: new CANNON.Vec3(worldPos.x, worldPos.y, worldPos.z),
+            shape: shape,
+            material: mat
+        });
+        body.quaternion.set(worldQuat.x, worldQuat.y, worldQuat.z, worldQuat.w);
+        return body;
+    }
+
+    function destroyPhysics() {
+        physicsWorld = null;
+        entities.forEach(ent => ent.physicsBody = null);
+    }
+
+    // ==========================================
+    // 3. ECS ARCHITECTURE
+    // ==========================================
+    let entities = [];
+    let selectedEntityId = null;
+
+    class Entity {
+        constructor(name, threeObject, type, initialMat = 'Default', isImported = false) {
+            this.id = Math.random().toString(36).substr(2, 9);
+            this.name = name;
+            this.object = threeObject; 
+            this.type = type; 
+            this.isImported = isImported;
+            
+            this.parentId = null;
+            this.children = [];
+            this.components = []; 
+
+            this.addComponent('Transform');
+            
+            if(type === 'mesh') {
+                this.addComponent('Material', { preset: initialMat, useTexture: false, textureName: '', visible: true });
+            }
+            if(type === 'light') {
+                this.addComponent('Light', { color: '#ffffff', intensity: 1, distance: 100, castShadow: false });
+            }
+            if(type === 'player_start') {
+                this.addComponent('Camera', { active: true });
+            }
+
+            this.initialTransform = {
+                position: threeObject.position.clone(),
+                quaternion: threeObject.quaternion.clone(),
+                scale: threeObject.scale.clone()
+            };
+            
+            this.object.userData.entityId = this.id;
+            scene.add(this.object);
+            entities.push(this);
+            renderHierarchy();
+        }
+
+        addComponent(type, initialData = {}) {
+            if(this.getComponent(type)) return; 
+
+            let data = initialData;
+            
+            if(type === 'Physics') {
+                data = { type: 'Dynamic', mass: 1, friction: 0.5, restitution: 0.5, ...initialData };
+                if(this.name === 'Floor') data.type = 'Static';
+            }
+            if(type === 'Camera') {
+                data = { active: true, fov: 75, near: 0.1, far: 1000, ...initialData };
+            }
+            if(type === 'Material') {
+                data = { preset: 'Default', useTexture: false, textureName: '', visible: true, ...initialData };
+                if(this.type === 'mesh') updateEntityMaterial(this, data);
+            }
+            if(type === 'Light') {
+                data = { color: '#ffffff', intensity: 1, distance: 100, castShadow: false, ...initialData };
+                this.object.intensity = data.intensity;
+                this.object.color.set(data.color);
+            }
+            if(type === 'Script') {
+                data = { scriptId: initialData.scriptId || null };
+            }
+            
+            this.components.push({ type, data });
+            if(selectedEntityId === this.id) renderInspector();
+        }
+
+        removeComponent(type) {
+            this.components = this.components.filter(c => c.type !== type);
+            if(type === 'Material') {
+                this.object.material.map = null;
+                this.object.material.color.setHex(0xffffff);
+            }
+            if(selectedEntityId === this.id) renderInspector();
+        }
+
+        getComponent(type) {
+            return this.components.find(c => c.type === type);
+        }
+
+        setParent(parentId) {
+            if (parentId === this.id || this.parentId === parentId) return;
+            if (this.parentId) {
+                const oldParent = entities.find(e => e.id === this.parentId);
+                if(oldParent) oldParent.children = oldParent.children.filter(c => c.id !== this.id);
+            }
+            this.parentId = parentId;
+            if (parentId) {
+                const newParent = entities.find(e => e.id === parentId);
+                if(newParent) {
+                    newParent.children.push(this);
+                    scene.attach(this.object); newParent.object.attach(this.object);
+                }
+            } else {
+                scene.attach(this.object);
+            }
+            this.updateInitialTransform();
+            renderHierarchy();
+        }
+
+        updateInitialTransform() {
+            this.initialTransform.position.copy(this.object.position);
+            this.initialTransform.quaternion.copy(this.object.quaternion);
+            this.initialTransform.scale.copy(this.object.scale);
+        }
+    }
+
+    function deleteEntity(id) {
+        const entIndex = entities.findIndex(e => e.id === id);
+        if(entIndex === -1) return;
+        const ent = entities[entIndex];
+        
+        // Use spread to copy array, as deleteEntity modifies 'children'
+        [...ent.children].forEach(c => deleteEntity(c.id));
+        
+        if(ent.parentId) {
+            const parent = entities.find(e => e.id === ent.parentId);
+            if(parent) parent.children = parent.children.filter(c => c.id !== id);
+        }
+        
+        if(ent.object) {
+            if(ent.object.parent) ent.object.parent.remove(ent.object);
+            if(ent.object.geometry) ent.object.geometry.dispose();
+        }
+        
+        const reIndex = entities.findIndex(e => e.id === id);
+        if(reIndex !== -1) entities.splice(reIndex, 1);
+        
+        if(selectedEntityId === id) {
+            selectedEntityId = null;
+            renderInspector();
+        }
+        renderHierarchy();
+    }
+
+    // ==========================================
+    // 4. EDITOR LOGIC
+    // ==========================================
+
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    renderer.domElement.addEventListener('pointerdown', (event) => {
+        if(isPlaying) return; 
+        const rect = renderer.domElement.getBoundingClientRect();
+        mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(mouse, editorCamera);
+        const intersects = raycaster.intersectObjects(scene.children, true);
+        if (intersects.length > 0) {
+            let target = intersects[0].object;
+            while(target && !target.userData.entityId) target = target.parent;
+            if (target && target.userData.entityId) {
+                selectEntity(target.userData.entityId);
+                document.querySelector('[data-tab="properties"]').click();
+            }
+        }
+    });
+
+    document.body.addEventListener('click', (e) => {
+        if (e.target.classList.contains('tab-btn')) {
+            const btn = e.target;
+            const parent = btn.parentElement;
+            const panel = parent.parentElement;
+            const tabId = btn.getAttribute('data-tab');
+            parent.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            panel.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            btn.classList.add('active');
+            const content = panel.querySelector(`#${tabId}-content`);
+            if(content) content.classList.add('active');
+        }
+    });
+
+    function selectEntity(id) {
+        selectedEntityId = id;
+        renderHierarchy();
+        renderInspector();
+    }
+
+    function createPropRow(labelStr, element) {
+        const row = document.createElement('div');
+        row.className = 'prop-row';
+        const label = document.createElement('span');
+        label.className = 'prop-label';
+        label.innerText = labelStr;
+        row.appendChild(label);
+        row.appendChild(element);
+        return row;
+    }
+
+    function renderHierarchy() {
+        const list = document.getElementById('entity-list');
+        list.innerHTML = '';
+        const roots = entities.filter(e => !e.parentId);
+        roots.forEach(root => renderEntityNode(root, list, 0));
+    }
+
+    function renderEntityNode(entity, container, depth) {
+        const div = document.createElement('div');
+        let typeClass = 'mesh';
+        if(entity.type === 'light') typeClass = 'light';
+        if(entity.type === 'player_start') typeClass = 'playerstart';
+        if(entity.isImported) typeClass = 'imported';
+        
+        div.className = `entity-item ${typeClass} ${entity.id === selectedEntityId ? 'selected' : ''}`;
+        
+        const indent = document.createElement('span');
+        indent.className = 'entity-indent';
+        indent.style.width = `${depth * 20}px`;
+        div.prepend(indent);
+        
+        const nameSpan = document.createElement('span');
+        nameSpan.innerText = entity.name;
+        div.appendChild(nameSpan);
+
+        const delBtn = document.createElement('span');
+        delBtn.className = 'entity-delete';
+        delBtn.innerText = '×';
+        delBtn.title = "Delete Entity";
+        delBtn.onclick = (e) => { 
+            e.preventDefault(); e.stopPropagation();
+            deleteEntity(entity.id);
+        };
+        div.appendChild(delBtn);
+
+        div.onclick = (e) => { e.stopPropagation(); if(!isPlaying) selectEntity(entity.id); };
+        container.appendChild(div);
+        entity.children.forEach(child => renderEntityNode(child, container, depth + 1));
+    }
+
+    function renderInspector() {
+        const container = document.getElementById('component-list');
+        container.innerHTML = '';
+        const adder = document.getElementById('add-component-area');
+        
+        if (!selectedEntityId) {
+            container.innerHTML = '<div style="padding:20px; color:#666; text-align:center;">Select an entity</div>';
+            adder.style.display = 'none';
+            return;
+        }
+        
+        adder.style.display = 'block';
+        const entity = entities.find(e => e.id === selectedEntityId);
+        if(!entity) return;
+
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'component';
+        const nameInput = document.createElement('input');
+        nameInput.className = 'prop-input';
+        nameInput.value = entity.name;
+        nameInput.oninput = (e) => { entity.name = e.target.value; renderHierarchy(); };
+        headerDiv.appendChild(createPropRow('Name', nameInput));
+        container.appendChild(headerDiv);
+
+        renderHierarchyComponent(entity, container);
+
+        entity.components.forEach(comp => {
+            const compDiv = document.createElement('div');
+            compDiv.className = 'component';
+            const title = document.createElement('div');
+            title.className = 'component-title';
+            title.innerHTML = `<span>${comp.type}</span>`;
+            
+            let canDelete = true;
+            if(comp.type === 'Transform') canDelete = false;
+            if(comp.type === 'Camera' && entity.type === 'player_start') canDelete = false;
+
+            if(canDelete) {
+                const delBtn = document.createElement('span');
+                delBtn.className = 'btn-delete-comp';
+                delBtn.innerText = 'Remove';
+                delBtn.onclick = () => entity.removeComponent(comp.type);
+                title.appendChild(delBtn);
+            }
+            compDiv.appendChild(title);
+
+            if(comp.type === 'Transform') renderTransform(comp.data, entity, compDiv);
+            else if(comp.type === 'Material') renderMaterial(comp.data, entity, compDiv);
+            else if(comp.type === 'Light') renderLight(comp.data, entity, compDiv);
+            else if(comp.type === 'Physics') renderPhysics(comp.data, entity, compDiv);
+            else if(comp.type === 'Camera') renderCamera(comp.data, entity, compDiv);
+            else if(comp.type === 'Script') renderScriptComponent(comp.data, entity, compDiv);
+
+            container.appendChild(compDiv);
+        });
+
+        const addSelect = document.getElementById('add-comp-select');
+        addSelect.innerHTML = '';
+        const options = [];
+        if(entity.type !== 'light') options.push('Physics');
+        if(entity.type === 'mesh' && !entity.getComponent('Material')) options.push('Material');
+        if(entity.type === 'light' && !entity.getComponent('Light')) options.push('Light');
+        if(!entity.getComponent('Script')) options.push('Script');
+
+        options.forEach(opt => {
+            const el = document.createElement('option');
+            el.value = opt; el.innerText = opt;
+            addSelect.appendChild(el);
+        });
+    }
+
+    function renderTransform(data, entity, container) {
+        const posRow = document.createElement('div'); posRow.className = 'vec3-row';
+        ['x', 'y', 'z'].forEach(axis => {
+            const input = document.createElement('input'); input.type = 'number'; input.step = '0.1'; input.className = 'prop-input vec3-input';
+            input.value = entity.object.position[axis].toFixed(2);
+            input.addEventListener('input', (e) => { entity.object.position[axis] = parseFloat(e.target.value); entity.updateInitialTransform(); });
+            posRow.appendChild(input);
+        });
+        container.appendChild(createPropRow('Position', posRow));
+
+        const rotRow = document.createElement('div'); rotRow.className = 'vec3-row';
+        ['x', 'y', 'z'].forEach(axis => {
+            const input = document.createElement('input'); input.type = 'number'; input.step = '1'; input.className = 'prop-input vec3-input';
+            input.value = (entity.object.rotation[axis] * (180 / Math.PI)).toFixed(1);
+            input.addEventListener('input', (e) => { entity.object.rotation[axis] = parseFloat(e.target.value) * (Math.PI / 180); entity.updateInitialTransform(); });
+            rotRow.appendChild(input);
+        });
+        container.appendChild(createPropRow('Rotation', rotRow));
+
+        const scaleRow = document.createElement('div'); scaleRow.className = 'vec3-row';
+        ['x', 'y', 'z'].forEach(axis => {
+            const input = document.createElement('input'); input.type = 'number'; input.step = '0.1'; input.className = 'prop-input vec3-input';
+            input.value = entity.object.scale[axis].toFixed(2);
+            input.addEventListener('input', (e) => { entity.object.scale[axis] = parseFloat(e.target.value); entity.updateInitialTransform(); });
+            scaleRow.appendChild(input);
+        });
+        container.appendChild(createPropRow('Scale', scaleRow));
+    }
+
+    function renderMaterial(data, entity, container) {
+        const typeSelect = document.createElement('select'); typeSelect.className = 'prop-input';
+        ['Color', 'Texture'].forEach(t => {
+            const opt = document.createElement('option'); opt.value = t; opt.innerText = t;
+            if((data.useTexture && t === 'Texture') || (!data.useTexture && t === 'Color')) opt.selected = true;
+            typeSelect.appendChild(opt);
+        });
+        typeSelect.onchange = (e) => {
+            data.useTexture = e.target.value === 'Texture';
+            updateEntityMaterial(entity, data);
+            renderInspector(); 
+        };
+        container.appendChild(createPropRow('Mode', typeSelect));
+
+        if(data.useTexture) {
+            const texSelect = document.createElement('select'); texSelect.className = 'prop-input';
+            const texKeys = Object.keys(assets.textures);
+            if(texKeys.length === 0) {
+                const opt = document.createElement('option'); opt.innerText = "No Textures"; texSelect.appendChild(opt);
+                texSelect.disabled = true;
+            } else {
+                texKeys.forEach(k => {
+                    const opt = document.createElement('option'); opt.value = k; opt.innerText = k;
+                    if(data.textureName === k) opt.selected = true;
+                    texSelect.appendChild(opt);
+                });
+                if(!data.textureName && texKeys.length > 0) {
+                    data.textureName = texKeys[0];
+                    updateEntityMaterial(entity, data);
+                }
+            }
+            texSelect.onchange = (e) => {
+                data.textureName = e.target.value;
+                updateEntityMaterial(entity, data);
+            };
+            container.appendChild(createPropRow('Image', texSelect));
+        } else {
+            const select = document.createElement('select'); select.className = 'prop-input';
+            Object.keys(MATERIAL_PRESETS).forEach(k => {
+                const opt = document.createElement('option'); opt.value = k; opt.innerText = k;
+                if(k === data.preset) opt.selected = true;
+                select.appendChild(opt);
+            });
+            select.onchange = (e) => { data.preset = e.target.value; updateEntityMaterial(entity, data); };
+            container.appendChild(createPropRow('Preset', select));
+            
+            let displayColor = '#ffffff';
+            let mat = entity.object.material;
+            if (!mat && entity.object.traverse) {
+                entity.object.traverse(child => { if (child.isMesh && !mat) mat = child.material; });
+            }
+            if (Array.isArray(mat)) mat = mat[0];
+            if (mat && mat.color) displayColor = '#' + mat.color.getHexString();
+
+            const col = document.createElement('input'); col.type = 'color'; col.className = 'prop-input';
+            col.value = displayColor;
+            col.oninput = (e) => {
+                entity.object.traverse(child => {
+                    if (child.isMesh) {
+                        if(Array.isArray(child.material)) child.material.forEach(m => m.color.set(e.target.value));
+                        else child.material.color.set(e.target.value);
+                    }
+                });
+                if (entity.object.material && !Array.isArray(entity.object.material)) {
+                    entity.object.material.color.set(e.target.value);
+                }
+            };
+            container.appendChild(createPropRow('Color', col));
+        }
+
+        const visCheck = document.createElement('input'); visCheck.type = 'checkbox';
+        visCheck.checked = data.visible !== false; 
+        visCheck.onchange = (e) => { data.visible = e.target.checked; };
+        container.appendChild(createPropRow('Visible in Game', visCheck));
+    }
+
+    function renderLight(data, entity, container) {
+        const col = document.createElement('input'); col.type = 'color'; col.className = 'prop-input';
+        col.value = data.color; 
+        col.oninput = (e) => { data.color = e.target.value; entity.object.color.set(e.target.value); };
+        container.appendChild(createPropRow('Color', col));
+
+        const intens = document.createElement('input'); intens.type = 'number'; intens.step = '0.1'; intens.className = 'prop-input';
+        intens.value = data.intensity;
+        intens.oninput = (e) => { data.intensity = parseFloat(e.target.value); entity.object.intensity = data.intensity; };
+        container.appendChild(createPropRow('Intensity', intens));
+
+        const shadow = document.createElement('input'); shadow.type = 'checkbox';
+        shadow.checked = data.castShadow;
+        shadow.onchange = (e) => { data.castShadow = e.target.checked; entity.object.castShadow = data.castShadow; };
+        container.appendChild(createPropRow('Cast Shadow', shadow));
+    }
+
+    function renderPhysics(data, entity, container) {
+        const select = document.createElement('select'); select.className = 'prop-input';
+        ['Static', 'Dynamic'].forEach(k => {
+            const opt = document.createElement('option'); opt.value = k; opt.innerText = k;
+            if(k === data.type) opt.selected = true;
+            select.appendChild(opt);
+        });
+        select.onchange = (e) => { data.type = e.target.value; };
+        container.appendChild(createPropRow('Type', select));
+
+        const mass = document.createElement('input'); mass.type = 'number'; mass.step = '0.1'; mass.className = 'prop-input';
+        mass.value = data.mass;
+        mass.oninput = (e) => { data.mass = parseFloat(e.target.value); };
+        container.appendChild(createPropRow('Mass', mass));
+
+        const friction = document.createElement('input'); friction.type = 'number'; friction.step = '0.1'; friction.className = 'prop-input';
+        friction.value = data.friction;
+        friction.oninput = (e) => { data.friction = parseFloat(e.target.value); };
+        container.appendChild(createPropRow('Friction', friction));
+
+        const restitution = document.createElement('input'); restitution.type = 'number'; restitution.step = '0.1'; restitution.className = 'prop-input';
+        restitution.value = data.restitution;
+        restitution.oninput = (e) => { data.restitution = parseFloat(e.target.value); };
+        container.appendChild(createPropRow('Bounciness', restitution));
+    }
+
+    function renderCamera(data, entity, container) {
+        const activeCheck = document.createElement('input'); activeCheck.type = 'checkbox'; activeCheck.disabled = true; activeCheck.checked = true;
+        container.appendChild(createPropRow('Active', activeCheck));
+
+        const fovInput = document.createElement('input'); 
+        fovInput.type = 'number'; fovInput.className = 'prop-input'; fovInput.value = data.fov;
+        fovInput.onchange = (e) => data.fov = parseFloat(e.target.value);
+        container.appendChild(createPropRow('FOV', fovInput));
+
+        const nearInput = document.createElement('input'); 
+        nearInput.type = 'number'; nearInput.className = 'prop-input'; nearInput.value = data.near;
+        nearInput.onchange = (e) => data.near = parseFloat(e.target.value);
+        container.appendChild(createPropRow('Near Clip', nearInput));
+
+        const farInput = document.createElement('input'); 
+        farInput.type = 'number'; farInput.className = 'prop-input'; farInput.value = data.far;
+        farInput.onchange = (e) => data.far = parseFloat(e.target.value);
+        container.appendChild(createPropRow('Far Clip', farInput));
+
+        const info = document.createElement('div'); info.style.fontSize = '0.75rem'; info.style.color = '#888'; info.innerText = "Takes control on Play";
+        container.appendChild(info);
+    }
+
+    function renderScriptComponent(data, entity, container) {
+        const select = document.createElement('select'); select.className = 'prop-input';
+        const nullOpt = document.createElement('option'); nullOpt.value = ""; nullOpt.innerText = "None";
+        if(!data.scriptId) nullOpt.selected = true;
+        select.appendChild(nullOpt);
+
+        scripts.forEach(s => {
+            const opt = document.createElement('option');
+            opt.value = s.id; opt.innerText = s.name;
+            if(s.id === data.scriptId) opt.selected = true;
+            select.appendChild(opt);
+        });
+
+        select.onchange = (e) => { data.scriptId = e.target.value; };
+        container.appendChild(createPropRow('Script File', select));
+    }
+
+    function renderHierarchyComponent(entity, container) {
+        const compDiv = document.createElement('div'); compDiv.className = 'component';
+        const title = document.createElement('div'); title.className = 'component-title'; title.innerText = 'Hierarchy'; compDiv.appendChild(title);
+        
+        const possibleParents = entities.filter(e => e.id !== entity.id);
+        const select = document.createElement('select'); select.className = 'prop-input';
+        const nullOpt = document.createElement('option'); nullOpt.value = "null"; nullOpt.innerText = "None";
+        if(!entity.parentId) nullOpt.selected = true;
+        select.appendChild(nullOpt);
+
+        possibleParents.forEach(p => {
+            const opt = document.createElement('option'); opt.value = p.id; opt.innerText = p.name;
+            if(p.id === entity.parentId) opt.selected = true;
+            select.appendChild(opt);
+        });
+        select.onchange = (e) => entity.setParent(e.target.value === "null" ? null : e.target.value);
+        compDiv.appendChild(createPropRow('Parent', select));
+        container.appendChild(compDiv);
+    }
+
+    document.getElementById('btn-add-comp').onclick = () => {
+        if(!selectedEntityId) return;
+        const ent = entities.find(e => e.id === selectedEntityId);
+        const type = document.getElementById('add-comp-select').value;
+        ent.addComponent(type);
+    };
+
+    function renderWorldSettings() {
+        const container = document.getElementById('world-settings-list');
+        container.innerHTML = '';
+        
+        const physDiv = document.createElement('div'); physDiv.className = 'component';
+        physDiv.innerHTML = '<div class="component-title">Global Physics</div>';
+        const gravInput = document.createElement('input'); gravInput.type = 'number'; gravInput.step = '0.1'; gravInput.className = 'prop-input'; 
+        gravInput.value = globalPhysicsSettings.gravity; gravInput.oninput = (e) => { globalPhysicsSettings.gravity = parseFloat(e.target.value); };
+        physDiv.appendChild(createPropRow('Gravity Y', gravInput));
+        container.appendChild(physDiv);
+
+        const sunDiv = document.createElement('div'); sunDiv.className = 'component';
+        sunDiv.innerHTML = '<div class="component-title">Sun & Sky</div>';
+        
+        const sunIntens = document.createElement('input'); sunIntens.type = 'number'; sunIntens.step = '0.1'; sunIntens.className = 'prop-input';
+        sunIntens.value = dirLight.intensity; sunIntens.oninput = (e) => dirLight.intensity = parseFloat(e.target.value);
+        sunDiv.appendChild(createPropRow('Intensity', sunIntens));
+
+        const sunColor = document.createElement('input'); sunColor.type = 'color'; sunColor.className = 'prop-input'; 
+        sunColor.value = '#' + dirLight.color.getHexString(); sunColor.oninput = (e) => dirLight.color.set(e.target.value);
+        sunDiv.appendChild(createPropRow('Sun Color', sunColor));
+
+        const vecRow = document.createElement('div'); vecRow.className = 'vec3-row';
+        ['x', 'y', 'z'].forEach(axis => {
+            const input = document.createElement('input'); input.type = 'number'; input.step = '1.0'; input.className = 'prop-input vec3-input';
+            input.value = dirLight.position[axis];
+            input.addEventListener('input', (e) => { dirLight.position[axis] = parseFloat(e.target.value); });
+            vecRow.appendChild(input);
+        });
+        sunDiv.appendChild(createPropRow('Position', vecRow));
+
+        const skyColor = document.createElement('input'); skyColor.type = 'color'; skyColor.className = 'prop-input'; 
+        skyColor.value = '#' + scene.background.getHexString(); skyColor.oninput = (e) => scene.background.set(e.target.value);
+        sunDiv.appendChild(createPropRow('Sky Color', skyColor));
+        container.appendChild(sunDiv);
+
+        const fogDiv = document.createElement('div'); fogDiv.className = 'component';
+        fogDiv.innerHTML = '<div class="component-title">Fog</div>';
+        const fogDens = document.createElement('input'); fogDens.type = 'number'; fogDens.step = '0.01'; fogDens.min = '0'; fogDens.max = '0.5'; fogDens.className = 'prop-input';
+        fogDens.value = scene.fog.density; fogDens.oninput = (e) => scene.fog.density = parseFloat(e.target.value);
+        fogDiv.appendChild(createPropRow('Density', fogDens));
+        const fogColor = document.createElement('input'); fogColor.type = 'color'; fogColor.className = 'prop-input';
+        fogColor.value = '#' + scene.fog.color.getHexString(); fogColor.oninput = (e) => scene.fog.color.set(e.target.value);
+        fogDiv.appendChild(createPropRow('Color', fogColor));
+        container.appendChild(fogDiv);
+    }
+    renderWorldSettings();
+
+    document.getElementById('btn-add-start').onclick = () => {
+        const geo = new THREE.CapsuleGeometry(0.5, 1, 4, 8);
+        const mat = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
+        const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 1; 
+        const arrow = new THREE.ArrowHelper(new THREE.Vector3(0,0,-1), new THREE.Vector3(0,0,0), 1.5, 0x00ff00);
+        mesh.add(arrow);
+        new Entity('Player Start', mesh, 'player_start');
+    };
+    
+    document.getElementById('btn-add-cube').onclick = () => {
+        const geo = new THREE.BoxGeometry(1, 1, 1);
+        const mat = new THREE.MeshStandardMaterial({ castShadow: true, receiveShadow: true });
+        const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 0.5; mesh.castShadow = true; mesh.receiveShadow = true;
+        new Entity('Cube', mesh, 'mesh', 'Wood');
+    };
+    
+    document.getElementById('btn-add-sphere').onclick = () => {
+        const geo = new THREE.SphereGeometry(0.7, 32, 16);
+        const mat = new THREE.MeshStandardMaterial({ castShadow: true, receiveShadow: true });
+        const mesh = new THREE.Mesh(geo, mat); mesh.position.y = 1; mesh.castShadow = true; mesh.receiveShadow = true;
+        new Entity('Sphere', mesh, 'mesh', 'Metal');
+    };
+
+    document.getElementById('btn-add-plane').onclick = () => {
+        const geo = new THREE.PlaneGeometry(10, 10);
+        const mat = new THREE.MeshStandardMaterial({ side: THREE.DoubleSide, receiveShadow: true });
+        const mesh = new THREE.Mesh(geo, mat); mesh.rotation.x = -Math.PI / 2; mesh.receiveShadow = true;
+        new Entity('Floor', mesh, 'mesh', 'Dirt');
+    };
+
+    document.getElementById('btn-add-light').onclick = () => {
+        const light = new THREE.PointLight(0xffffff, 1, 100);
+        light.position.set(0, 3, 0);
+        const helper = new THREE.PointLightHelper(light, 0.5);
+        scene.add(helper);
+        new Entity('Point Light', light, 'light');
+    };
+
+    // ==========================================
+    // 7. GAME STATE
+    // ==========================================
+    // REMOVED DUPLICATE VARIABLE DECLARATIONS HERE
+    const btnPlay = document.getElementById('btn-play');
+    const btnStop = document.getElementById('btn-stop');
+
+    btnPlay.onclick = () => {
+        const camEntity = entities.find(e => e.getComponent('Camera'));
+        if(!camEntity) { 
+            Debug.error("Cannot Play: No Entity with Camera Component found!");
+            // Show console so user sees the error
+            document.getElementById('game-console').style.display = 'flex';
+            return; 
+        }
+
+        // Clear console before new run
+        Debug.clear();
+        Debug.log("Starting Game...");
+
+        isPlaying = true;
+        document.body.classList.add('play-mode');
+        
+        // Hide Debug Helpers
+        gridHelper.visible = false;
+        
+        // Apply Runtime Visibility Logic
+        entities.forEach(ent => {
+            if(ent.type === 'player_start') ent.object.visible = false;
+            const matComp = ent.getComponent('Material');
+            if(matComp && matComp.data.visible === false) {
+                ent.object.visible = false;
+            }
+        });
+
+        const camData = camEntity.getComponent('Camera').data;
+        activeCamera = new THREE.PerspectiveCamera(
+            camData.fov, 
+            window.innerWidth / window.innerHeight, 
+            camData.near, 
+            camData.far
+        );
+        
+        initPhysics(); 
+        ScriptExecution.init(); // Initialize Scripts
+        
+        btnPlay.style.display = 'none';
+        btnStop.style.display = 'block';
+        onWindowResize(); 
+        prevTime = performance.now();
+    };
+
+    btnStop.onclick = () => {
+        isPlaying = false;
+        document.body.classList.remove('play-mode');
+        
+        // Show Debug Helpers
+        gridHelper.visible = true;
+
+        activeCamera = editorCamera;
+        destroyPhysics(); 
+        Events.clear(); // Clear listeners
+
+        // Reset positions & visibility
+        entities.forEach(ent => {
+            if(ent.initialTransform) {
+                ent.object.position.copy(ent.initialTransform.position);
+                ent.object.quaternion.copy(ent.initialTransform.quaternion);
+                ent.object.scale.copy(ent.initialTransform.scale);
+            }
+            ent.object.visible = true;
+        });
+
+        btnPlay.style.display = 'block';
+        btnStop.style.display = 'none';
+        onWindowResize(); 
+    };
+
+    function animate() {
+        requestAnimationFrame(animate);
+        const time = performance.now();
+        const delta = Math.min((time - prevTime) / 1000, 0.1);
+        prevTime = time;
+
+        if(isPlaying) {
+            // Update Inputs
+            InputManager.update();
+
+            // Run Physics
+            if(physicsWorld) {
+                physicsWorld.step(1/60, delta, 3);
+                entities.forEach(ent => {
+                    if (ent.physicsBody) {
+                        ent.object.position.copy(ent.physicsBody.position);
+                        ent.object.quaternion.copy(ent.physicsBody.quaternion);
+                    }
+                });
+            }
+
+            // Run Scripts
+            ScriptExecution.update(delta);
+
+            // Camera Follow Logic (Camera Manager)
+            const camEntity = entities.find(e => e.getComponent('Camera'));
+            if(camEntity) {
+                const worldPos = new THREE.Vector3();
+                const worldQuat = new THREE.Quaternion();
+                camEntity.object.getWorldPosition(worldPos);
+                camEntity.object.getWorldQuaternion(worldQuat);
+
+                activeCamera.position.copy(worldPos);
+                activeCamera.quaternion.copy(worldQuat);
+                if(camEntity.type === 'player_start') activeCamera.position.y += 0.8;
+            }
+
+        } else {
+            orbitControls.update();
+        }
+
+        renderer.render(scene, activeCamera);
+    }
+    animate();
+
+    function initResizer(resizerId, panelId, direction) {
+        const resizer = document.getElementById(resizerId);
+        const panel = document.getElementById(panelId);
+        resizer.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            document.body.style.cursor = 'col-resize';
+            const startX = e.clientX;
+            const startWidth = parseInt(window.getComputedStyle(panel).width, 10);
+            const onMouseMove = (moveEvent) => {
+                const delta = moveEvent.clientX - startX;
+                let newWidth = direction === 'left' ? startWidth + delta : startWidth - delta;
+                if (newWidth > 150 && newWidth < 600) { panel.style.width = `${newWidth}px`; onWindowResize(); }
+            };
+            const onMouseUp = () => { document.body.style.cursor = 'default'; window.removeEventListener('mousemove', onMouseMove); window.removeEventListener('mouseup', onMouseUp); onWindowResize(); };
+            window.addEventListener('mousemove', onMouseMove);
+            window.addEventListener('mouseup', onMouseUp);
+        });
+    }
+    initResizer('resizer-left', 'left-panel', 'left');
+    initResizer('resizer-right', 'inspector', 'right');
+
+    // ==========================================
+    // 8. SAVE & LOAD
+    // ==========================================
+    const btnSave = document.getElementById('btn-save');
+    const btnLoad = document.getElementById('btn-load');
+    const fileInputLoad = document.getElementById('file-input-load');
+
+    btnSave.onclick = saveProject;
+    btnLoad.onclick = () => {
+        // Direct load, bypassing confirm dialog which might be blocked
+        fileInputLoad.click();
+    };
+
+    fileInputLoad.onchange = (e) => {
+        const file = e.target.files[0];
+        if(!file) return;
+        const reader = new FileReader();
+        reader.onload = (ev) => loadProject(ev.target.result);
+        reader.readAsText(file);
+        fileInputLoad.value = '';
+    };
+
+    function saveProject() {
+        // Collect Entities Data
+        // Must grab Transform data explicitly from object since it's not stored in component.data
+        const entitiesData = entities.map(e => {
+            const entData = {
+                id: e.id,
+                name: e.name,
+                type: e.type,
+                parentId: e.parentId,
+                isImported: e.isImported,
+                components: e.components.map(c => ({...c})) // Clone components
+            };
+            
+            // Sync Transform
+            const tComp = entData.components.find(c => c.type === 'Transform');
+            if(tComp) {
+                tComp.data = {
+                    pos: e.object.position.toArray(),
+                    rot: e.object.rotation.toArray(),
+                    scl: e.object.scale.toArray()
+                };
+            }
+            return entData;
+        });
+
+        const saveData = {
+            version: 1.0,
+            assets: assets.registry,
+            scripts: scripts,
+            world: {
+                gravity: globalPhysicsSettings.gravity,
+                iterations: globalPhysicsSettings.iterations,
+                sun: {
+                    intensity: dirLight.intensity,
+                    color: '#' + dirLight.color.getHexString(),
+                    position: dirLight.position.toArray()
+                },
+                fog: {
+                    density: scene.fog.density,
+                    color: '#' + scene.fog.color.getHexString()
+                },
+                sky: '#' + scene.background.getHexString()
+            },
+            entities: entitiesData
+        };
+
+        const blob = new Blob([JSON.stringify(saveData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'project.json';
+        a.click();
+    }
+
+    function loadProject(jsonString) {
+        let data;
+        try { data = JSON.parse(jsonString); } 
+        catch(e) { Debug.error("Failed to parse project file"); return; }
+
+        // 1. Reset Scene
+        // Clear entities in reverse (children first ideally, but simple loop works if we detach)
+        // Actually, easiest is to clear array and scene children except helpers
+        selectedEntityId = null;
+        renderInspector();
+        
+        // Keep helpers
+        const toRemove = scene.children.filter(c => 
+            c !== gridHelper && c !== ambientLight && c !== dirLight && c.type !== 'PointLightHelper'
+        );
+        toRemove.forEach(o => scene.remove(o));
+        
+        entities = [];
+        scriptInstances = [];
+        scripts.length = 0;
+        
+        // 2. Restore Scripts
+        if(data.scripts) data.scripts.forEach(s => scripts.push(s));
+        renderScriptList();
+
+        // 3. Restore World
+        if(data.world) {
+            globalPhysicsSettings.gravity = data.world.gravity;
+            globalPhysicsSettings.iterations = data.world.iterations;
+            
+            dirLight.intensity = data.world.sun.intensity;
+            dirLight.color.set(data.world.sun.color);
+            dirLight.position.fromArray(data.world.sun.position);
+            
+            scene.fog.density = data.world.fog.density;
+            scene.fog.color.set(data.world.fog.color);
+            scene.background.set(data.world.sky);
+            
+            renderWorldSettings();
+        }
+
+        // 4. Restore Assets (Async)
+        assets.registry = data.assets || {};
+        assets.meshes = {};
+        assets.textures = {};
+        
+        // Rehydrate Assets from Registry
+        const assetPromises = [];
+        Object.keys(assets.registry).forEach(name => {
+            const item = assets.registry[name];
+            if(item.type === 'img') {
+                const p = new Promise(resolve => {
+                    new THREE.TextureLoader().load(item.data, (tex) => {
+                        tex.colorSpace = THREE.SRGBColorSpace;
+                        assets.textures[name] = tex;
+                        resolve();
+                    });
+                });
+                assetPromises.push(p);
+            }
+            else if(item.type === 'obj') {
+                const obj = new OBJLoader().parse(item.data);
+                assets.meshes[name] = obj;
+                addMeshToLibrary(name); // Restore to UI
+            }
+        });
+
+        // Wait for textures (optional, but better for visual pop-in)
+        Promise.all(assetPromises).then(() => {
+            // 5. Restore Entities
+            // First pass: Create all
+            if(data.entities) {
+                data.entities.forEach(eData => {
+                    // Create Base Object
+                    let obj;
+                    // Logic similar to Factory but bypassing it to restore state
+                    if(eData.type === 'mesh') {
+                        if(eData.isImported && assets.meshes[eData.name]) {
+                            // Cloning imported mesh
+                            obj = assets.meshes[eData.name].clone();
+                            obj.traverse(c => { if(c.isMesh) { c.castShadow=true; c.receiveShadow=true; } });
+                        } else if(eData.name === 'Cube') {
+                            obj = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial());
+                        } else if(eData.name === 'Sphere') {
+                            obj = new THREE.Mesh(new THREE.SphereGeometry(0.7,32,16), new THREE.MeshStandardMaterial());
+                        } else if(eData.name === 'Floor') {
+                            obj = new THREE.Mesh(new THREE.PlaneGeometry(10,10), new THREE.MeshStandardMaterial());
+                        } else {
+                            // Fallback for generic meshes
+                            obj = new THREE.Mesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshStandardMaterial());
+                        }
+                    } else if(eData.type === 'light') {
+                        obj = new THREE.PointLight(0xffffff, 1, 100);
+                        const h = new THREE.PointLightHelper(obj, 0.5);
+                        scene.add(h); // Helpers managed separately but added for visibility
+                    } else if(eData.type === 'player_start') {
+                        obj = new THREE.Mesh(new THREE.CapsuleGeometry(0.5, 1, 4, 8), new THREE.MeshBasicMaterial({color:0x00ff00, wireframe:true}));
+                        obj.add(new THREE.ArrowHelper(new THREE.Vector3(0,0,-1), new THREE.Vector3(0,0,0), 1.5, 0x00ff00));
+                    }
+
+                    if(obj) {
+                        // Create entity wrapper manually to avoid default component overwrite logic from constructor
+                        const ent = new Entity(eData.name, obj, eData.type, 'Default', eData.isImported);
+                        ent.id = eData.id;
+                        ent.object.userData.entityId = ent.id;
+                        
+                        // Restore Components
+                        ent.components = eData.components; // Replace defaults
+                        
+                        // Apply Transform
+                        const tComp = ent.getComponent('Transform');
+                        if(tComp && tComp.data) {
+                            ent.object.position.fromArray(tComp.data.pos);
+                            ent.object.rotation.fromArray(tComp.data.rot); // is Euler in array? Yes fromArray works with [x,y,z] order
+                            ent.object.scale.fromArray(tComp.data.scl);
+                            ent.updateInitialTransform();
+                        }
+
+                        // Apply Material Settings immediately
+                        const matComp = ent.getComponent('Material');
+                        if(matComp) updateEntityMaterial(ent, matComp.data);
+                        
+                        // Apply Light Settings
+                        const lightComp = ent.getComponent('Light');
+                        if(lightComp) {
+                            ent.object.intensity = lightComp.data.intensity;
+                            ent.object.color.set(lightComp.data.color);
+                            ent.object.castShadow = lightComp.data.castShadow;
+                        }
+                    }
+                });
+
+                // Second pass: Restore Hierarchy
+                data.entities.forEach(eData => {
+                    if(eData.parentId) {
+                        const child = entities.find(e => e.id === eData.id);
+                        if(child) child.setParent(eData.parentId);
+                    }
+                });
+            }
+            renderHierarchy();
+        });
+    }
+
+</script>
+</body>
+</html>
